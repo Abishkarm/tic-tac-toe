@@ -5,12 +5,15 @@ function App() {
   const [currentPlayer, setCurrentPlayer] = useState<'X' | 'O'>('X');
   const [gameOver, setGameOver] = useState(false);
   const [scores, setScores] = useState({ X: 0, O: 0, draw: 0 });
-  const [variant, setVariant] = useState('ultimate');
+  const [variant, setVariant] = useState<'classic' | 'ultimate'>('ultimate');
   const [gameActive, setGameActive] = useState(true);
   const [showScore, setShowScore] = useState(true);
+  const [showVersionSelect, setShowVersionSelect] = useState(false);
+  const [forceRender, setForceRender] = useState(0);
 
-  const boards = useRef<Array<string[]>>(Array.from({ length: 9 }, () => Array(9).fill(""))).current;
-  const boardWinners = useRef<string[]>(Array(9).fill("")).current;
+  const classicBoard = useRef<string[]>(Array(9).fill("")).current;
+  const ultimateBoards = useRef<Array<string[]>>(Array.from({ length: 9 }, () => Array(9).fill(""))).current;
+  const ultimateBoardWinners = useRef<string[]>(Array(9).fill("")).current;
   const activeBoard = useRef<number>(-1);
   const mainBoardRef = useRef<HTMLDivElement>(null);
   const statusRef = useRef<HTMLDivElement>(null);
@@ -29,23 +32,58 @@ function App() {
     );
   };
 
-  const updateActiveBoards = () => {
+  const playMoveClassic = (index: number) => {
+    if (gameOver || classicBoard[index]) return;
+
+    classicBoard[index] = currentPlayer;
+    if (mainBoardRef.current) {
+      const cell = mainBoardRef.current.querySelectorAll(".cell")[index] as HTMLElement;
+      cell.textContent = currentPlayer;
+      cell.classList.add(currentPlayer.toLowerCase());
+      cell.classList.add("played");
+    }
+
+    if (checkWin(classicBoard)) {
+      if (statusRef.current) {
+        statusRef.current.textContent = `🎉 Player ${currentPlayer} wins!`;
+      }
+      setScores(prev => ({ ...prev, [currentPlayer]: prev[currentPlayer as keyof typeof prev] + 1 }));
+      setGameOver(true);
+      return;
+    }
+
+    if (classicBoard.every(cell => cell !== "")) {
+      if (statusRef.current) {
+        statusRef.current.textContent = "It's a draw!";
+      }
+      setScores(prev => ({ ...prev, draw: prev.draw + 1 }));
+      setGameOver(true);
+      return;
+    }
+
+    setCurrentPlayer(currentPlayer === "X" ? "O" : "X");
+    if (statusRef.current) {
+      statusRef.current.textContent = `Player ${currentPlayer === "X" ? "O" : "X"}'s turn`;
+    }
+  };
+
+  const updateActiveBoardsUltimate = () => {
     if (!mainBoardRef.current) return;
     [...mainBoardRef.current.children].forEach((b, i) => {
       const element = b as HTMLElement;
       element.classList.toggle(
         "active",
-        !gameOver && (activeBoard.current === -1 || activeBoard.current === i) && !boardWinners[i]
+        !gameOver && (activeBoard.current === -1 || activeBoard.current === i) && !ultimateBoardWinners[i]
       );
     });
   };
 
-  const playMove = (b: number, c: number) => {
+  const playMoveUltimate = (b: number, c: number) => {
     if (gameOver) return;
     if (activeBoard.current !== -1 && activeBoard.current !== b) return;
-    if (boards[b][c] || boardWinners[b]) return;
+    if (ultimateBoards[b][c] || ultimateBoardWinners[b]) return;
 
-    boards[b][c] = currentPlayer;
+    ultimateBoards[b][c] = currentPlayer;
     if (mainBoardRef.current) {
       const cell = mainBoardRef.current.children[b].querySelectorAll(".cell")[c] as HTMLElement;
       cell.textContent = currentPlayer;
@@ -53,15 +91,15 @@ function App() {
       cell.classList.add("played");
     }
 
-    if (checkWin(boards[b])) {
-      boardWinners[b] = currentPlayer;
+    if (checkWin(ultimateBoards[b])) {
+      ultimateBoardWinners[b] = currentPlayer;
       if (mainBoardRef.current) {
         const big = mainBoardRef.current.children[b] as HTMLElement;
         big.classList.add(`won-${currentPlayer.toLowerCase()}`);
         big.dataset.winner = currentPlayer;
       }
 
-      if (checkWin(boardWinners as unknown as string[])) {
+      if (checkWin(ultimateBoardWinners as unknown as string[])) {
         if (statusRef.current) {
           statusRef.current.textContent = `🎉 Player ${currentPlayer} wins the game!`;
         }
@@ -72,17 +110,32 @@ function App() {
       }
     }
 
-    activeBoard.current = boardWinners[c] ? -1 : c;
+    activeBoard.current = ultimateBoardWinners[c] ? -1 : c;
     setCurrentPlayer(currentPlayer === "X" ? "O" : "X");
     if (statusRef.current) {
       statusRef.current.textContent = `Player ${currentPlayer === "X" ? "O" : "X"}'s turn`;
     }
-    updateActiveBoards();
+    updateActiveBoardsUltimate();
   };
 
-  const createBoard = () => {
+  const createBoardClassic = () => {
     if (!mainBoardRef.current) return;
     mainBoardRef.current.innerHTML = "";
+    mainBoardRef.current.className = "classic-board";
+
+    for (let i = 0; i < 9; i++) {
+      const cell = document.createElement("div");
+      cell.className = "cell";
+      cell.onclick = () => playMoveClassic(i);
+      mainBoardRef.current.appendChild(cell);
+    }
+  };
+
+  const createBoardUltimate = () => {
+    if (!mainBoardRef.current) return;
+    mainBoardRef.current.innerHTML = "";
+    mainBoardRef.current.className = "main-board";
+
     for (let b = 0; b < 9; b++) {
       const big = document.createElement("div");
       big.className = "big-board";
@@ -94,20 +147,21 @@ function App() {
       for (let c = 0; c < 9; c++) {
         const cell = document.createElement("div");
         cell.className = "cell";
-        cell.onclick = () => playMove(b, c);
+        cell.onclick = () => playMoveUltimate(b, c);
         mini.appendChild(cell);
       }
 
       big.appendChild(mini);
       mainBoardRef.current.appendChild(big);
     }
-    updateActiveBoards();
+    updateActiveBoardsUltimate();
   };
 
   const resetGame = () => {
+    classicBoard.fill("");
     for (let i = 0; i < 9; i++) {
-      boards[i].fill("");
-      boardWinners[i] = "";
+      ultimateBoards[i].fill("");
+      ultimateBoardWinners[i] = "";
     }
     activeBoard.current = -1;
     setCurrentPlayer("X");
@@ -116,7 +170,11 @@ function App() {
     if (statusRef.current) {
       statusRef.current.textContent = "Player X's turn";
     }
-    createBoard();
+    if (variant === 'classic') {
+      createBoardClassic();
+    } else {
+      createBoardUltimate();
+    }
   };
 
   useEffect(() => {
@@ -133,12 +191,42 @@ function App() {
   }, [scores, showScore]);
 
   useEffect(() => {
-    createBoard();
-  }, []);
+    if (variant === 'classic') {
+      createBoardClassic();
+    } else {
+      createBoardUltimate();
+    }
+  }, [variant]);
+
+  const selectVersion = (selectedVariant: 'classic' | 'ultimate') => {
+    setVariant(selectedVariant);
+    setShowVersionSelect(false);
+    classicBoard.fill("");
+    for (let i = 0; i < 9; i++) {
+      ultimateBoards[i].fill("");
+      ultimateBoardWinners[i] = "";
+    }
+    activeBoard.current = -1;
+    setCurrentPlayer('X');
+    setGameOver(false);
+    setGameActive(true);
+    if (statusRef.current) {
+      statusRef.current.textContent = "Player X's turn";
+    }
+    setForceRender(prev => prev + 1);
+  };
 
   return (
     <div ref={containerRef} className="min-h-screen bg-[#2f3b4c] flex flex-col justify-center items-center p-4">
       <style>{`
+        .classic-board {
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          gap: 12px;
+          max-width: 300px;
+          width: 100%;
+        }
+
         .main-board {
           display: grid;
           grid-template-columns: repeat(3, 1fr);
@@ -268,7 +356,85 @@ function App() {
         .score-item {
           font-weight: bold;
         }
+
+        .modal-overlay {
+          position: fixed;
+          inset: 0;
+          background: rgba(0, 0, 0, 0.5);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 1000;
+        }
+
+        .modal-content {
+          background: #1f2937;
+          color: white;
+          padding: 32px;
+          border-radius: 16px;
+          text-align: center;
+          max-width: 400px;
+          box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        }
+
+        .modal-content h2 {
+          margin: 0 0 24px 0;
+          font-size: 1.8rem;
+        }
+
+        .version-buttons {
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+        }
+
+        .version-btn {
+          padding: 16px;
+          border: 2px solid transparent;
+          border-radius: 10px;
+          background: #4f46e5;
+          color: white;
+          font-weight: bold;
+          font-size: 1rem;
+          cursor: pointer;
+          transition: all 0.3s ease;
+        }
+
+        .version-btn:hover {
+          background: #4338ca;
+          transform: translateY(-2px);
+        }
+
+        .version-btn.classic {
+          font-size: 0.95rem;
+        }
+
+        .version-btn.ultimate {
+          font-size: 0.95rem;
+        }
       `}</style>
+
+      {showVersionSelect && (
+        <div className="modal-overlay" onClick={() => setShowVersionSelect(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h2>Select Game Version</h2>
+            <div className="version-buttons">
+              <button
+                className="version-btn classic"
+                onClick={() => selectVersion('classic')}
+              >
+                🎮 Classic (3x3)
+              </button>
+              <button
+                className="version-btn ultimate"
+                onClick={() => selectVersion('ultimate')}
+              >
+                ⚡ Ultimate (9x9)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showScore && (
         <div className="score-panel">
@@ -291,6 +457,9 @@ function App() {
         <button className="btn" onClick={resetGame}>Reset Game</button>
         <button className="btn" onClick={() => setShowScore(!showScore)}>
           {showScore ? 'Hide' : 'Show'} Score
+        </button>
+        <button className="btn" onClick={() => setShowVersionSelect(true)}>
+          {variant === 'classic' ? '🎮' : '⚡'} {variant === 'classic' ? 'Classic' : 'Ultimate'}
         </button>
       </div>
     </div>
